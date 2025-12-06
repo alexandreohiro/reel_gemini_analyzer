@@ -1,30 +1,59 @@
-# Python
+# ===== Python / Build =====
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.so
 *.pyd
+*.pyo
 *.egg-info/
-.dist/
+.eggs/
 build/
-.cache/
+dist/
+pip-wheel-metadata/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# venv
+# ===== Virtual env =====
 .venv/
 venv/
+ENV/
+env/
 
-# outputs do projeto
+# ===== OS / Editor =====
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.vscode/
+.idea/
+
+# ===== Project outputs =====
 downloads/
 results/
 frames/
+tmp/
+*.log
 
-# secrets
+# ===== Secrets / Auth (NÃO versionar) =====
 .env
 credentials.json
 token.json
+*.pem
+*.key
 
-# OS/Editor
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
+# ===== Media =====
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.jpg
+*.jpeg
+*.png
+*.gif
