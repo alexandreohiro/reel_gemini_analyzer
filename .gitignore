@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.dist/
+build/
+.cache/
+.pytest_cache/
+
+# venv
+.venv/
+venv/
+
+# outputs do projeto
+downloads/
+results/
+frames/
+
+# secrets
+.env
+credentials.json
+token.json
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

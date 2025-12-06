@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reel-gemini-analyzer"
+version = "0.1.0"
+description = "Pipeline: video -> frames -> OCR -> Gemini analysis (text + optional vision)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name="Alexandre Ohiro"}]
+
+dependencies = [
+  "google-genai>=0.6.0",
+  "opencv-python>=4.8.0",
+  "pillow>=10.0.0",
+  "pytesseract>=0.3.10",
+  "numpy>=1.24.0",
+  "yt-dlp>=2024.10.0",
+  "pydantic>=2.0.0",
+]
+
+[project.scripts]
+reel-analyze = "reel_analyzer.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
