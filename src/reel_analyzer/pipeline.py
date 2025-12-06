@@ -11,80 +11,24 @@ from reel_analyzer.gemini.analyzer import GeminiAnalyzer, GeminiConfig
 
 log = logging.getLogger(__name__)
 
-
 @dataclass
 class PipelineConfig:
-    # vídeo -> frames
     frames: int = 12
     every_seconds: Optional[float] = None
     scene_detect: bool = False
+    vision: bool = False
 
-    # OCR
+    # OCR (Tesseract)
     ocr_langs: str = "por+eng"
     tesseract_cmd: Optional[str] = None
 
-    # ÁUDIO (Whisper)
-    use_audio: bool = True
-    whisper_model: str = "small"
-    whisper_language: Optional[str] = "pt"   # None = auto
-    whisper_device: str = "cpu"              # "cuda" se tiver GPU
+    # NOVO: manda o MP4 pro Gemini (transcrição + texto visível)
+    gemini_video: bool = True
 
-    # Gemini
-    vision: bool = False
-
-    # paths
     out_dir: str = "results"
     frames_dir: str = "frames"
     downloads_dir: str = "downloads"
-
-    # download
     acknowledge_rights: bool = False
-
-
-def _build_combined_text(ocr: Dict[str, Any], audio: Optional[Dict[str, Any]]) -> str:
-    """Combina transcrição de áudio + texto do OCR em um único blob de texto."""
-    ocr_text = (ocr or {}).get("consolidated_text") or ""
-    audio_text = (audio or {}).get("text") or ""
-
-    parts = []
-    if audio_text.strip():
-        parts.append("TRANSCRIÇÃO DO ÁUDIO:\n" + audio_text.strip())
-    if ocr_text.strip():
-        parts.append("TEXTO NA TELA (OCR):\n" + ocr_text.strip())
-
-    combined = "\n\n".join(parts).strip()
-    return combined or "(nenhum texto detectado no áudio nem no OCR)."
-
-
-def _run_audio_transcription(video_path: str, cfg: PipelineConfig) -> Optional[Dict[str, Any]]:
-    """Chama Whisper (se instalado) para transcrever o áudio do vídeo."""
-    if not cfg.use_audio:
-        return None
-
-    try:
-        from reel_analyzer.audio.whisper import WhisperConfig, transcribe_audio
-    except ImportError as e:
-        log.warning("Whisper não instalado (torch + openai-whisper); pulando áudio: %s", e)
-        return None
-
-    wcfg = WhisperConfig(
-        model_name=cfg.whisper_model,
-        device=cfg.whisper_device,
-        language=cfg.whisper_language,
-    )
-
-    try:
-        log.info("Iniciando transcrição de áudio com Whisper (%s)...", wcfg.model_name)
-        audio = transcribe_audio(video_path, wcfg)
-        log.info(
-            "Transcrição de áudio concluída (len=%d caracteres).",
-            len(audio.get("text") or ""),
-        )
-        return audio
-    except Exception as e:
-        log.warning("Falha na transcrição de áudio: %s", e)
-        return None
-
 
 def run_pipeline(
     *,
@@ -97,17 +41,18 @@ def run_pipeline(
     cfg = cfg or PipelineConfig()
     os.makedirs(cfg.out_dir, exist_ok=True)
 
-    # 1) Obter vídeo (download ou arquivo local)
-    info: Dict[str, Any] = {}
+    # 1) obter vídeo
+    info = {}
     if url:
         dl = Downloader(download_dir=cfg.downloads_dir)
         res = dl.download(url, acknowledge_rights=cfg.acknowledge_rights)
         video_path = res.video_path
         info = res.info or {}
+
     if not video_path:
         raise ValueError("Passe --video (arquivo local) ou --url (com --i-own-this).")
 
-    # 2) Extrair frames
+    # 2) frames
     frames, vmeta = extract_frames(
         video_path,
         every_seconds=cfg.every_seconds,
@@ -118,42 +63,49 @@ def run_pipeline(
 
     # 3) OCR
     ocr_cfg = OCRConfig(langs=cfg.ocr_langs, tesseract_cmd=cfg.tesseract_cmd)
-    frames_as_dict = [
-        {"t_sec": fr.t_sec, "image": fr.image, "path": fr.path} for fr in frames_saved
-    ]
+    frames_as_dict = [{"t_sec": fr.t_sec, "image": fr.image, "path": fr.path} for fr in frames_saved]
     ocr = ocr_frames(frames_as_dict, ocr_cfg)
 
-    # 4) Áudio (Whisper)
-    audio = _run_audio_transcription(video_path, cfg)
-
-    # 5) Gemini – análise em cima do texto combinado (áudio + OCR)
+    # 4) Gemini
     ga = GeminiAnalyzer(api_key=gemini_api_key, cfg=GeminiConfig())
-    combined_text = _build_combined_text(ocr, audio)
-    text_analysis = ga.analyze_text(
-        combined_text,
-        extra_instructions=extra_instructions,
-    )
 
-    # 6) Gemini Vision (opcional)
+    # 4a) NOVO: extrair do vídeo (áudio + texto visível)
+    video_extraction = None
+    if cfg.gemini_video:
+        video_extraction = ga.extract_from_video(video_path, extra_instructions=extra_instructions)
+
+    # 4b) juntar tudo e pedir análise
+    parts = []
+    if ocr.get("consolidated_text"):
+        parts.append("== OCR (Tesseract) ==\n" + ocr["consolidated_text"])
+
+    if video_extraction and video_extraction.get("ok") and video_extraction.get("parsed"):
+        ve = video_extraction["parsed"]
+        if ve.get("on_screen_text"):
+            parts.append("== Texto visível (Gemini/Vídeo) ==\n" + ve["on_screen_text"])
+        if ve.get("audio_transcript"):
+            parts.append("== Transcrição (Áudio) ==\n" + ve["audio_transcript"])
+
+    consolidated_for_analysis = "\n\n".join(parts).strip()
+    text_analysis = ga.analyze_text(consolidated_for_analysis, extra_instructions=extra_instructions)
+
     vision_analysis = None
     if cfg.vision:
         import pathlib
-
         image_bytes = []
         for fr in frames_saved[: min(8, len(frames_saved))]:
             if fr.path and os.path.exists(fr.path):
                 image_bytes.append(pathlib.Path(fr.path).read_bytes())
-
         vprompt = (
             "Analise estes frames de um vídeo curto.\n"
-            "1) Descreva o que aparece visualmente;\n"
-            "2) Extraia texto visível na cena;\n"
-            "3) Diga o tema provável e por quê.\n"
+            "1) descreva o que aparece visualmente\n"
+            "2) extraia texto visível na cena\n"
+            "3) diga o tema provável e por quê\n"
             "Responda em PT-BR."
         )
         vision_analysis = ga.analyze_vision(vprompt, image_bytes)
 
-    result: Dict[str, Any] = {
+    result = {
         "input": {"video_path": video_path, "url": url},
         "video_meta": vmeta,
         "download_info": {
@@ -163,22 +115,16 @@ def run_pipeline(
             "duration": info.get("duration"),
             "upload_date": info.get("upload_date"),
             "webpage_url": info.get("webpage_url"),
-        }
-        if info
-        else {},
-        "frames": [
-            {"index": fr.index, "t_sec": fr.t_sec, "path": fr.path} for fr in frames_saved
-        ],
+        } if info else {},
+        "frames": [{"index": fr.index, "t_sec": fr.t_sec, "path": fr.path} for fr in frames_saved],
         "ocr": ocr,
-        "audio": audio,
         "gemini": {
-            "combined_text": combined_text,
+            "video_extraction": video_extraction,
             "text_analysis": text_analysis,
             "vision_analysis": vision_analysis,
         },
     }
     return result
-
 
 def save_json(result: Dict[str, Any], out_path: str) -> None:
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)

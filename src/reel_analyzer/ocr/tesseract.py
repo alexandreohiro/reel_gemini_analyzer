@@ -11,7 +11,6 @@ from reel_analyzer.utils.text import normalize_text, dedupe_lines
 
 log = logging.getLogger(__name__)
 
-
 @dataclass
 class OCRConfig:
     langs: str = "por+eng"
@@ -20,9 +19,7 @@ class OCRConfig:
     tesseract_cmd: Optional[str] = None
     max_width: int = 1200
 
-
 def _preprocess(img: Image.Image, max_width: int) -> Image.Image:
-    # resize
     w, h = img.size
     if w > max_width:
         nh = int(h * (max_width / w))
@@ -31,10 +28,8 @@ def _preprocess(img: Image.Image, max_width: int) -> Image.Image:
     arr = np.array(img)
     gray = cv2.cvtColor(arr, cv2.COLOR_RGB2GRAY)
 
-    # redução de ruído leve
     gray = cv2.bilateralFilter(gray, 7, 50, 50)
 
-    # threshold adaptativo (mais robusto que valor fixo)
     thr = cv2.adaptiveThreshold(
         gray, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -43,14 +38,12 @@ def _preprocess(img: Image.Image, max_width: int) -> Image.Image:
     )
     return Image.fromarray(thr)
 
-
 def ocr_frames(frames: List[Dict], cfg: OCRConfig) -> Dict:
     if cfg.tesseract_cmd:
         pytesseract.pytesseract.tesseract_cmd = cfg.tesseract_cmd
 
     all_text = []
     frame_texts = []
-
     config = f"--psm {cfg.psm} --oem {cfg.oem}"
 
     for i, fr in enumerate(frames):
@@ -65,7 +58,6 @@ def ocr_frames(frames: List[Dict], cfg: OCRConfig) -> Dict:
         except Exception as e:
             log.warning("OCR falhou no frame %d: %s", i, e)
 
-    # consolida removendo duplicatas por linha
     lines = []
     for block in all_text:
         lines.extend([ln for ln in block.splitlines() if ln.strip()])

@@ -57,3 +57,18 @@ token.json
 *.jpeg
 *.png
 *.gif
+
+.venv/
+__pycache__/
+downloads/
+results/
+frames/
+*.mp4
+*.json
+
+# Google OAuth (Docs)
+credentials.json
+token.json
+
+# Segredos locais
+.env

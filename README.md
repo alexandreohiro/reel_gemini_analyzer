@@ -1,3 +1,25 @@
+# Reel Gemini Analyzer
+
+Baixa um vídeo (URL) ou lê um MP4 local, extrai frames, faz OCR (Tesseract) e usa Gemini para:
+- extrair texto visível
+- transcrever o áudio (quando possível)
+- gerar uma análise estruturada (JSON)
+- exportar o resultado para Google Docs
+
+## Requisitos
+- Python 3.13+
+- Tesseract OCR instalado (Windows)
+- Uma API Key do Gemini (GEMINI_API_KEY)
+
+## Setup (Windows + Git Bash)
+```bash
+py -3.13 -m venv .venv
+source .venv/Scripts/activate
+python -m pip install -U pip
+pip install -e .
+python -m pip install -U google-api-python-client google-auth-oauthlib google-auth-httplib2
+---------------------------------------------------------------------------------------------------
+
 Reel Gemini Analyzer
 
 Pipeline de análise de vídeos curtos (ex.: Reels) que:
